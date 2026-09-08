@@ -99,7 +99,14 @@ async def test_web_vision_settings_are_masked_and_settings_types_are_strict(tmp_
         assert invalid.status_code == 400
         saved = await client.patch(
             "/api/vision", headers=headers,
-            json={"provider": "minimax", "model": "MiniMax-M3", "base_url": "https://api.example", "api_key": "secret"},
+            json={
+                "provider": "openai-compatible",
+                "provider_name": "团队视觉网关",
+                "model": "org/vision-model",
+                "base_url": "https://api.example/v1",
+                "endpoint_url": "https://api.example/custom/chat",
+                "api_key": "secret",
+            },
         )
         assert saved.status_code == 200
         assert saved.json()["api_key"] == "••••"
@@ -107,6 +114,8 @@ async def test_web_vision_settings_are_masked_and_settings_types_are_strict(tmp_
         fetched = await client.get("/api/vision")
         assert fetched.json()["configured"] is True
         assert fetched.json()["api_key"] == "••••"
+        assert fetched.json()["provider_name"] == "团队视觉网关"
+        assert fetched.json()["endpoint_url"] == "https://api.example/custom/chat"
 
 
 @pytest.mark.asyncio
@@ -126,7 +135,14 @@ async def test_vision_configuration_reloads_queue_for_auto_and_manual_tagging(tm
         headers = {"Origin": "http://127.0.0.1:8765", "X-CSRF-Token": token}
         configured = await client.patch(
             "/api/vision", headers=headers,
-            json={"provider": "minimax", "model": "MiniMax-M3", "base_url": "https://api.example", "api_key": "secret"},
+            json={
+                "provider": "minimax",
+                "provider_name": "MiniMax 预设",
+                "model": "MiniMax-M3",
+                "base_url": "https://api.example",
+                "endpoint_url": "",
+                "api_key": "secret",
+            },
         )
         assert configured.status_code == 200
         imported = await client.post(

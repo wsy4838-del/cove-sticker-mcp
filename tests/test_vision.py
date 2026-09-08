@@ -185,3 +185,146 @@ async def test_openai_compatible_provider_uses_image_url_payload(monkeypatch: py
     await client.aclose()
     assert result["description"] == "平静"
     assert seen["json"]["messages"][0]["content"][1]["type"] == "image_url"
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_provider_uses_exact_custom_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TEST_STICKER_KEY", "secret")
+    seen: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        assert request.headers["authorization"] == "Bearer secret"
+        seen["json"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"description":"自定义接口"}'}}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = HttpVisionProvider(
+        VisionConfig(
+            provider="openai-compatible",
+            provider_name="Local OpenAI gateway",
+            model="org/vision-model",
+            base_url="https://ignored.example/v1",
+            endpoint_url="http://127.0.0.1:9000/custom/completions",
+            api_key="secret",
+        ),
+        client,
+    )
+    result = await provider.describe(png_bytes(), "image/png", "x.png")
+    await client.aclose()
+    assert result["description"] == "自定义接口"
+    assert seen["url"] == "http://127.0.0.1:9000/custom/completions"
+    assert seen["json"]["model"] == "org/vision-model"
+
+
+@pytest.mark.asyncio
+async def test_anthropic_compatible_provider_uses_messages_protocol(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TEST_STICKER_KEY", "secret")
+    seen: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["json"] = json.loads(request.content)
+        assert request.headers["x-api-key"] == "secret"
+        assert request.headers["anthropic-version"] == "2023-06-01"
+        assert "authorization" not in request.headers
+        return httpx.Response(200, json={"content": [{"type": "text", "text": '{"description":"Anthropic视觉"}'}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = HttpVisionProvider(
+        VisionConfig(
+            provider="anthropic-compatible",
+            provider_name="自托管 Anthropic 网关",
+            model="claude-vision-compatible",
+            base_url="https://anthropic.example/v1",
+            api_key="secret",
+        ),
+        client,
+    )
+    result = await provider.describe(png_bytes(), "image/png", "x.png")
+    await client.aclose()
+    assert result["description"] == "Anthropic视觉"
+    assert seen["url"] == "https://anthropic.example/v1/messages"
+    assert seen["json"]["messages"][0]["content"][1]["source"]["type"] == "base64"
+
+
+@pytest.mark.asyncio
+async def test_anthropic_compatible_provider_keeps_exact_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TEST_STICKER_KEY", "secret")
+    seen: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, json={"content": [{"type": "text", "text": '{"description":"ok"}'}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = HttpVisionProvider(
+        VisionConfig(
+            provider="anthropic-compatible",
+            model="vision",
+            base_url="https://ignored.example",
+            endpoint_url="https://proxy.example/custom/messages",
+            api_key="secret",
+        ),
+        client,
+    )
+    await provider.describe(png_bytes(), "image/png", "x.png")
+    await client.aclose()
+    assert seen == ["https://proxy.example/custom/messages"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_vision_protocol_is_rejected_without_openai_fallback() -> None:
+    called = False
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = HttpVisionProvider(
+        VisionConfig(
+            provider="unknown-compatible",
+            model="vision",
+            base_url="https://api.example",
+            api_key="secret",
+        ),
+        client,
+    )
+    with pytest.raises(VisionError, match="unsupported vision provider"):
+        await provider.describe(png_bytes(), "image/png", "x.png")
+    await client.aclose()
+    assert called is False
+
+
+def test_custom_vision_settings_roundtrip_and_invalid_update_is_atomic(tmp_path: Path) -> None:
+    library = StickerLibrary(tmp_path)
+    library.update_vision_settings(
+        provider="anthropic-compatible",
+        provider_name="我的视觉服务",
+        model="org/model-with-vision",
+        base_url="http://127.0.0.1:9000/v1",
+        endpoint_url="http://127.0.0.1:9000/custom/messages",
+        api_key="secret",
+    )
+    assert library.vision_settings() == {
+        "provider": "anthropic-compatible",
+        "provider_name": "我的视觉服务",
+        "model": "org/model-with-vision",
+        "base_url": "http://127.0.0.1:9000/v1",
+        "endpoint_url": "http://127.0.0.1:9000/custom/messages",
+        "api_key_env": "",
+    }
+    assert library.vision_api_key() == "secret"
+
+    with pytest.raises(ValueError, match="unsupported vision provider"):
+        library.update_vision_settings(provider="gemini", provider_name="被拒绝")
+    assert library.vision_settings()["provider"] == "anthropic-compatible"
+    assert library.vision_settings()["provider_name"] == "我的视觉服务"
+    assert library.vision_api_key() == "secret"
+
+    with pytest.raises(ValueError, match="http"):
+        library.update_vision_settings(endpoint_url="file:///tmp/model")
+    assert library.vision_settings()["endpoint_url"] == "http://127.0.0.1:9000/custom/messages"
+    assert library.vision_api_key() == "secret"
