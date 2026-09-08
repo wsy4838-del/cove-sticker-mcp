@@ -276,6 +276,15 @@ async function run() {
     await page.getByRole('button', { name: '重试' }).click();
     await page.getByText('排队中').waitFor();
     assert.equal(state.jobs[0].status, 'queued');
+    if (await page.locator('#include-deleted').isChecked()) {
+      const visibleGalleryResponse = page.waitForResponse((response) => response.url().includes('/api/stickers?'));
+      await page.locator('#include-deleted').uncheck();
+      await visibleGalleryResponse;
+    }
+    await page.locator('#search-query').fill('');
+    const clearSearchResponse = page.waitForResponse((response) => response.url().includes('/api/stickers?'));
+    await page.getByRole('button', { name: '搜索' }).click();
+    await clearSearchResponse;
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole('tab', { name: '图库' }).click();
     await page.locator('.sticker-card').first().waitFor();
