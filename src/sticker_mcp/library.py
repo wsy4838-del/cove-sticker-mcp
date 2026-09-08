@@ -195,7 +195,7 @@ class StickerLibrary:
         return self.get(sticker_id)
 
     def search(self, query: str, *, page: int = 1, page_size: int = 50,
-               include_deleted: bool = False) -> SearchResult:
+               include_deleted: bool = False, agent_only: bool = False) -> SearchResult:
         page = max(1, int(page))
         page_size = min(100, max(1, int(page_size)))
         query = (query or "").strip().lower()
@@ -203,6 +203,11 @@ class StickerLibrary:
         params: list[Any] = []
         if not include_deleted:
             clauses.append("deleted=0")
+        if agent_only:
+            prefs = self.settings()
+            if not prefs.enabled or not prefs.assistant_enabled:
+                return SearchResult([], 0, page, page_size)
+            clauses.append("last_feedback IS NOT 'dislike'")
         if query:
             token = f"%{query}%"
             clauses.append("lower(filename || ' ' || description || ' ' || ocr_text || ' ' || semantic_description || ' ' || emotions_json || ' ' || scenes_json || ' ' || keywords_json) LIKE ?")
@@ -224,7 +229,17 @@ class StickerLibrary:
     def update_settings(self, **changes: Any) -> Settings:
         current = self.settings().to_dict()
         allowed = set(current)
-        current.update({key: value for key, value in changes.items() if key in allowed})
+        unknown = set(changes) - allowed
+        if unknown:
+            raise ValueError("unknown settings field")
+        for key, value in changes.items():
+            if key in {"enabled", "assistant_enabled", "auto_tag", "show_feedback"} and not isinstance(value, bool):
+                raise ValueError(f"{key} must be boolean")
+            if key in {"casual_frequency", "work_frequency"} and value not in {"off", "rare", "normal", "often"}:
+                raise ValueError(f"{key} has invalid value")
+            if key == "avoid_recent" and (not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 20):
+                raise ValueError("avoid_recent must be between 0 and 20")
+        current.update(changes)
         current["casual_frequency"] = current["casual_frequency"] if current["casual_frequency"] in {"off", "rare", "normal", "often"} else "normal"
         current["work_frequency"] = current["work_frequency"] if current["work_frequency"] in {"off", "rare", "normal", "often"} else "rare"
         current["avoid_recent"] = min(20, max(0, int(current["avoid_recent"])))
@@ -239,6 +254,103 @@ class StickerLibrary:
         self.db.connection.commit()
         return self.get(sticker_id)
 
+    def create_tag_job(self, sticker_id: str, *, source: str = "manual") -> int:
+        if source not in {"manual", "auto"}:
+            raise ValueError("invalid tag job source")
+        self.get(sticker_id)
+        now = _now()
+        cursor = self.db.connection.execute(
+            "INSERT INTO tag_jobs(sticker_id,status,created_at,updated_at,source) VALUES (?,?,?,?,?)",
+            (sticker_id, "queued", now, now, source),
+        )
+        self.db.connection.commit()
+        return int(cursor.lastrowid)
+
+    def get_tag_job(self, job_id: int) -> dict[str, Any]:
+        row = self.db.connection.execute("SELECT * FROM tag_jobs WHERE id=?", (int(job_id),)).fetchone()
+        if row is None:
+            raise KeyError(job_id)
+        return dict(zip(row.keys(), tuple(row), strict=True))
+
+    def mark_tag_job(self, job_id: int, status: str, error: str | None, *, source: str | None = None) -> None:
+        if status not in {"queued", "running", "done", "failed", "retryable"}:
+            raise ValueError("invalid tag job status")
+        if source is not None and source not in {"manual", "auto"}:
+            raise ValueError("invalid tag job source")
+        if source is None:
+            self.db.connection.execute("UPDATE tag_jobs SET status=?,error=?,updated_at=? WHERE id=?", (status, error, _now(), int(job_id)))
+        else:
+            self.db.connection.execute("UPDATE tag_jobs SET status=?,error=?,source=?,updated_at=? WHERE id=?", (status, error, source, _now(), int(job_id)))
+        self.db.connection.commit()
+
+    def recover_tag_jobs(self) -> int:
+        cursor = self.db.connection.execute(
+            "UPDATE tag_jobs SET status='retryable',error='interrupted; retry explicitly',updated_at=? WHERE status IN ('queued','running')",
+            (_now(),),
+        )
+        self.db.connection.commit()
+        return int(cursor.rowcount)
+
+    def list_tag_jobs(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        rows = self.db.connection.execute("SELECT * FROM tag_jobs ORDER BY id DESC LIMIT ?", (min(1000, max(1, int(limit))),)).fetchall()
+        return [dict(zip(row.keys(), tuple(row), strict=True)) for row in rows]
+
+    def vision_settings(self) -> dict[str, str]:
+        value = self.db.get_setting("vision") or {}
+        if not isinstance(value, dict):
+            return {}
+        return {key: str(value[key]) for key in ("provider", "model", "base_url", "api_key_env") if isinstance(value.get(key), str)}
+
+    def vision_api_key(self) -> str:
+        secret_path = self.root / "vision-secrets.json"
+        try:
+            value = json.loads(secret_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return ""
+        return value.get("api_key", "") if isinstance(value, dict) and isinstance(value.get("api_key"), str) else ""
+
+    def update_vision_settings(self, **changes: Any) -> dict[str, str]:
+        allowed = {"provider", "model", "base_url", "api_key_env", "api_key"}
+        if set(changes) - allowed:
+            raise ValueError("unknown vision setting")
+        current = self.vision_settings()
+        secret_update: str | None = None
+        for key, value in changes.items():
+            if not isinstance(value, str) or len(value) > 500:
+                raise ValueError("vision settings must be short strings")
+            if key == "provider" and value not in {"", "minimax", "openai-compatible"}:
+                raise ValueError("unsupported vision provider")
+            if key == "api_key_env" and value and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,80}", value):
+                raise ValueError("invalid API key environment name")
+            if key == "api_key":
+                secret_update = value
+        if secret_update is not None:
+            secret_path = self.root / "vision-secrets.json"
+            temporary = secret_path.with_name(f".{secret_path.name}.{uuid.uuid4().hex}.tmp")
+            try:
+                temporary.write_text(json.dumps({"api_key": secret_update}, ensure_ascii=False))
+                temporary.chmod(0o600)
+                os.replace(temporary, secret_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+        current.update(changes)
+        current.pop("api_key", None)
+        self.db.set_setting("vision", current)
+        return current
+
+    def untagged_ids(self, *, limit: int = 100) -> list[str]:
+        result: list[str] = []
+        page = 1
+        while len(result) < limit:
+            items = self.search("", page=page, page_size=100, include_deleted=False).items
+            if not items:
+                break
+            result.extend(item.id for item in items if not item.description and not item.semantic_description and not item.ocr_text)
+            if len(items) < 100:
+                break
+            page += 1
+        return result[:limit]
+
     def agent_get(self, sticker_id: str) -> Sticker:
         prefs = self.settings()
         sticker = self.get(sticker_id, include_deleted=False)
@@ -246,13 +358,19 @@ class StickerLibrary:
             raise KeyError(sticker_id)
         return sticker
 
-    def _recent_ids(self, session_id: str | None, limit: int) -> set[str]:
+    def _recent_ids(self, session_id: str | None, limit: int, *, current_turn: int | None = None, min_gap: int | None = None) -> set[str]:
         if not session_id or limit <= 0:
             return set()
-        rows = self.db.connection.execute(
-            "SELECT sticker_id FROM usage_events WHERE session_id=? ORDER BY id DESC LIMIT ?",
-            (session_id, limit),
-        ).fetchall()
+        if current_turn is not None and min_gap is not None:
+            rows = self.db.connection.execute(
+                "SELECT sticker_id FROM usage_events WHERE session_id=? AND (turn IS NULL OR ? - turn < ?) ORDER BY id DESC LIMIT ?",
+                (session_id, current_turn, min_gap, limit),
+            ).fetchall()
+        else:
+            rows = self.db.connection.execute(
+                "SELECT sticker_id FROM usage_events WHERE session_id=? ORDER BY id DESC LIMIT ?",
+                (session_id, limit),
+            ).fetchall()
         return {row[0] for row in rows}
 
     def _last_turn(self, session_id: str | None) -> int | None:
@@ -290,7 +408,11 @@ class StickerLibrary:
             last_turn = self._last_turn(session_id)
             if last_turn is not None and turn - last_turn < min_gap:
                 return []
-        excluded = set(recent_ids or []) | self._recent_ids(session_id, prefs.avoid_recent)
+        excluded = set(recent_ids or [])
+        if turns_since is None:
+            excluded |= self._recent_ids(session_id, prefs.avoid_recent, current_turn=turn, min_gap=min_gap)
+        elif turns_since < min_gap:
+            excluded |= self._recent_ids(session_id, prefs.avoid_recent)
         tokens = self._query_tokens(intent or "")
         rows = self.db.connection.execute(
             "SELECT * FROM stickers WHERE deleted=0 AND last_feedback IS NOT 'dislike' ORDER BY use_count ASC, updated_at DESC"
@@ -316,21 +438,36 @@ class StickerLibrary:
         destination.parent.mkdir(parents=True, exist_ok=True)
         manifest: dict[str, Any] = {"schema": 1, "items": [], "preferences": self.settings().to_dict()}
         data: list[tuple[str, bytes]] = []
+        total_bytes = 0
         page = 1
         while True:
             page_items = self.search("", include_deleted=True, page=page, page_size=100).items
             for sticker in page_items:
+                if len(data) >= 1999:
+                    raise ValueError("backup exceeds the portable 100 MiB or 1999 item limit")
                 raw = self.asset_bytes(sticker.id)
+                total_bytes += len(raw)
+                if total_bytes > 100 * 1024 * 1024:
+                    raise ValueError("backup exceeds the portable 100 MiB or 1999 item limit")
                 path = f"assets/{sticker.id}{sticker.extension}"
                 manifest["items"].append({"id": sticker.id, "path": path, "sha256": sticker.id, "metadata": sticker.metadata()})
                 data.append((path, raw))
             if len(page_items) < 100:
                 break
             page += 1
-        with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-            for path, raw in data:
-                archive.writestr(path, raw)
+        temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            with zipfile.ZipFile(temporary, "w", zipfile.ZIP_STORED) as archive:
+                archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+                for path, raw in data:
+                    archive.writestr(path, raw)
+            # The restore budget includes ZIP headers and the manifest. Validate
+            # the exact bytes before making the backup visible to callers.
+            safe_zip_members(temporary.read_bytes(), max_entries=2000)
+            os.replace(temporary, destination)
+        except (OSError, UnsafeArchiveError) as exc:
+            temporary.unlink(missing_ok=True)
+            raise ValueError(f"backup exceeds the portable ZIP budget: {exc}") from exc
         manifest_path = destination.with_suffix(".manifest.json")
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
         return BackupBundle(destination, manifest_path)
@@ -339,7 +476,7 @@ class StickerLibrary:
         backup = Path(backup)
         try:
             archive_bytes = backup.read_bytes()
-            safe_zip_members(archive_bytes)
+            safe_zip_members(archive_bytes, max_entries=2000)
         except (OSError, UnsafeArchiveError) as exc:
             raise ValueError(f"invalid backup ZIP: {exc}") from exc
         try:
@@ -356,6 +493,12 @@ class StickerLibrary:
         validated: list[tuple[bytes, str, ImageInfo, dict[str, Any]]] = []
         seen_paths: set[str] = set()
         seen_ids: set[str] = set()
+        metadata_fields = {
+            "id", "filename", "mime_type", "extension", "byte_size", "width", "height",
+            "description", "ocr_text", "semantic_description", "emotions", "scenes", "keywords",
+            "created_at", "updated_at", "deleted", "manually_edited", "use_count",
+            "last_feedback", "manual_fields",
+        }
         for item in manifest["items"]:
             if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not isinstance(item.get("path"), str):
                 raise ValueError("invalid backup item")
@@ -369,17 +512,38 @@ class StickerLibrary:
                 raise ValueError("backup hash/id mismatch")
             seen_ids.add(item["id"])
             metadata = item.get("metadata")
-            if not isinstance(metadata, dict) or not isinstance(metadata.get("filename", ""), str):
+            if not isinstance(metadata, dict) or set(metadata) != metadata_fields:
                 raise ValueError("invalid backup metadata")
+            if metadata.get("id") != info.sha256 or metadata.get("mime_type") != info.mime_type or metadata.get("extension") != info.extension:
+                raise ValueError("invalid backup metadata")
+            filename = metadata.get("filename")
+            if not isinstance(filename, str) or not filename or len(filename) > 200 or "\x00" in filename or "\\" in filename or Path(filename).name != filename:
+                raise ValueError("invalid backup metadata")
+            for field_name, expected in (("byte_size", info.byte_size), ("width", info.width), ("height", info.height)):
+                value = metadata.get(field_name)
+                if isinstance(value, bool) or not isinstance(value, int) or value != expected:
+                    raise ValueError("invalid backup metadata")
             for field_name in ("description", "ocr_text", "semantic_description"):
                 if field_name in metadata and not isinstance(metadata[field_name], str):
                     raise ValueError("invalid backup metadata")
             for field_name in ("emotions", "scenes", "keywords", "manual_fields"):
                 if field_name in metadata and (not isinstance(metadata[field_name], list) or not all(isinstance(value, str) for value in metadata[field_name])):
                     raise ValueError("invalid backup metadata")
+            if any(field not in _TAG_FIELDS for field in metadata["manual_fields"]) or len(set(metadata["manual_fields"])) != len(metadata["manual_fields"]):
+                raise ValueError("invalid backup manual fields")
+            if not isinstance(metadata["created_at"], str) or not isinstance(metadata["updated_at"], str):
+                raise ValueError("invalid backup metadata")
+            if not isinstance(metadata["deleted"], bool) or not isinstance(metadata["manually_edited"], bool):
+                raise ValueError("invalid backup metadata")
+            if metadata["manually_edited"] != bool(metadata["manual_fields"]):
+                raise ValueError("invalid backup manual fields")
+            if isinstance(metadata["use_count"], bool) or not isinstance(metadata["use_count"], int) or metadata["use_count"] < 0:
+                raise ValueError("invalid backup metadata")
             if "last_feedback" in metadata and metadata["last_feedback"] not in {None, "like", "dislike"}:
                 raise ValueError("invalid backup feedback")
             validated.append((data, Path(path).name, info, metadata))
+        if set(members) != seen_paths:
+            raise ValueError("backup contains unreferenced files")
         return self._restore_validated(validated, preferences)
 
     @staticmethod
@@ -388,6 +552,8 @@ class StickerLibrary:
             raise ValueError("invalid backup preferences")
         bool_fields = {"enabled", "assistant_enabled", "auto_tag", "show_feedback"}
         frequency_fields = {"casual_frequency", "work_frequency"}
+        if set(preferences) != bool_fields | frequency_fields | {"avoid_recent"}:
+            raise ValueError("invalid backup preferences")
         for key, value in preferences.items():
             if key in bool_fields and not isinstance(value, bool):
                 raise ValueError("invalid backup preferences")

@@ -153,11 +153,22 @@ def test_backup_exports_all_items_and_restores_manual_metadata(tmp_path: Path) -
     assert restored.last_feedback == "like"
 
 
+def test_backup_with_1000_items_round_trips_with_portable_entry_budget(tmp_path: Path) -> None:
+    source = StickerLibrary(tmp_path / "source")
+    for index in range(1000):
+        source.import_bytes(png_bytes((index % 256, (index // 256) % 256, 160)), f"{index}.png")
+    backup = source.export_backup(tmp_path / "thousand.zip")
+    destination = StickerLibrary(tmp_path / "destination")
+    report = destination.restore_backup(backup.path)
+    assert len(report.imported) == 1000
+    assert destination.search("", include_deleted=True, page_size=1).total == 1000
+
+
 def test_restore_rejects_oversized_member_set_before_import(tmp_path: Path) -> None:
     backup = tmp_path / "many.zip"
     with zipfile.ZipFile(backup, "w") as archive:
         archive.writestr("manifest.json", json.dumps({"schema": 1, "items": []}))
-        for index in range(1001):
+        for index in range(2001):
             archive.writestr(f"assets/{index}.png", b"x")
     destination = StickerLibrary(tmp_path / "destination")
     with pytest.raises(ValueError, match="backup|entry|ZIP"):

@@ -18,6 +18,7 @@ MAX_ZIP_COMPRESSION_RATIO = 200
 SUPPORTED_FORMATS = {"PNG": ("image/png", ".png"), "JPEG": ("image/jpeg", ".jpg"),
                      "WEBP": ("image/webp", ".webp"), "GIF": ("image/gif", ".gif")}
 MAX_GIF_FRAMES = 10
+MAX_GIF_TOTAL_PIXELS = 50_000_000
 
 
 class AssetError(ValueError):
@@ -71,6 +72,8 @@ def validate_image(data: bytes, filename: str = "sticker") -> ImageInfo:
                     frames = int(getattr(image, "n_frames", 1))
                     if frames > MAX_GIF_FRAMES:
                         raise AssetError("GIF contains too many frames")
+                    if width * height * frames > MAX_GIF_TOTAL_PIXELS:
+                        raise AssetError("GIF pixel budget is unsafe")
             with Image.open(io.BytesIO(data)) as image:
                 image.verify()
     except AssetError:
@@ -95,7 +98,9 @@ def _safe_zip_name(name: str) -> str:
     return "/".join(path.parts)
 
 
-def safe_zip_members(raw: bytes) -> list[tuple[zipfile.ZipInfo, str]]:
+def safe_zip_members(raw: bytes, *, max_entries: int = MAX_ZIP_ENTRIES,
+                     max_total_bytes: int = MAX_ZIP_BYTES,
+                     max_compression_ratio: int = MAX_ZIP_COMPRESSION_RATIO) -> list[tuple[zipfile.ZipInfo, str]]:
     if len(raw) > MAX_ZIP_BYTES:
         raise UnsafeArchiveError("ZIP exceeds 100 MiB limit")
     try:
@@ -106,7 +111,7 @@ def safe_zip_members(raw: bytes) -> list[tuple[zipfile.ZipInfo, str]]:
     total = 0
     try:
         infos = archive.infolist()
-        if len(infos) > MAX_ZIP_ENTRIES:
+        if len(infos) > max_entries:
             raise UnsafeArchiveError("ZIP contains too many entries")
         for info in infos:
             safe_name = _safe_zip_name(info.filename)
@@ -117,10 +122,10 @@ def safe_zip_members(raw: bytes) -> list[tuple[zipfile.ZipInfo, str]]:
                 continue
             if info.file_size > MAX_IMAGE_BYTES:
                 raise UnsafeArchiveError("ZIP member exceeds image limit")
-            if info.compress_size and info.file_size / info.compress_size > MAX_ZIP_COMPRESSION_RATIO:
+            if info.compress_size and info.file_size / info.compress_size > max_compression_ratio:
                 raise UnsafeArchiveError("ZIP compression ratio is unsafe")
             total += info.file_size
-            if total > MAX_ZIP_BYTES:
+            if total > max_total_bytes:
                 raise UnsafeArchiveError("ZIP expands beyond 100 MiB limit")
             members.append((info, safe_name))
     except Exception:

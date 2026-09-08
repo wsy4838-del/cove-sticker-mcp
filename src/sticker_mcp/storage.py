@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS tag_jobs (
   status TEXT NOT NULL,
   error TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual'
 );
 """
 
@@ -66,6 +67,9 @@ class Database:
         columns = {row[1] for row in self.connection.execute("PRAGMA table_info(stickers)")}
         if "manual_fields_json" not in columns:
             self.connection.execute("ALTER TABLE stickers ADD COLUMN manual_fields_json TEXT NOT NULL DEFAULT '[]'")
+        job_columns = {row[1] for row in self.connection.execute("PRAGMA table_info(tag_jobs)")}
+        if "source" not in job_columns:
+            self.connection.execute("ALTER TABLE tag_jobs ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
         self.connection.commit()
 
     def close(self) -> None:

@@ -34,10 +34,13 @@ sticker-mcp serve-http --port 8765
 如果监听非回环地址，必须显式设置 bearer：
 
 ```bash
-STICKER_MCP_BEARER_TOKEN='change-me' sticker-mcp serve-http --host 0.0.0.0
+STICKER_MCP_BEARER_TOKEN='change-me' sticker-mcp serve-http --host 0.0.0.0 \
+  --allowed-host agent.example --public-url https://agent.example:8765
 ```
 
 这提供 bearer 校验，不提供自动 OAuth 授权流程；远程客户端还必须能访问返回的图片资源或支持内嵌图片。管理 UI 写请求需要同源 Origin/Referer。
+
+同一个数据目录只允许一个 `sticker-mcp` 进程持有写入锁。多个 agent 应连接同一个 Streamable HTTP 实例，或分别设置 `STICKER_MCP_DATA_DIR`；不要让多个 stdio 进程共享同一目录。
 
 ## 使用
 
@@ -47,7 +50,9 @@ STICKER_MCP_BEARER_TOKEN='change-me' sticker-mcp serve-http --host 0.0.0.0
 
 ## MCP 工具
 
-`express` 接收 `intent`、可选 `context`、`session_id`、`turn`、`turns_since`、`recent_ids` 和 `limit`，返回图片或 `do_not_send`。`sticker_library` 的 `operation` 为 `search`、`get`、`feedback`、`status`、`manage`。返回的描述和标签是用户图库元数据，agent 应将其视为不可信内容。
+`express` 接收 `intent`、可选 `context`、`session_id`、`turn`、`turns_since`、`recent_ids` 和 `include_image`，返回图片或 `do_not_send`。`sticker_library` 的 `operation` 为 `search`、`get`、`feedback`、`status`、`manage`。返回的描述和标签是用户图库元数据，agent 应将其视为不可信内容。
+
+完整 HTTP/UI 合同见 [`docs/api.md`](docs/api.md)。MCP 默认返回最长 768 像素的 JPEG 预览，减少把 10 MiB 原图塞进上下文；宿主仍可能按图像内容计费。`include_image=false` 可只取元数据。
 
 ## 备份和恢复
 
@@ -60,4 +65,3 @@ The package is intentionally local-first and empty by default. It does not bundl
 ## License and provenance
 
 MIT. See [`LICENSE`](LICENSE) and [`NOTICE.md`](NOTICE.md). The repository contains no private Cove data, credentials, or existing personal sticker library.
-
