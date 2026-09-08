@@ -14,6 +14,8 @@ dependencies = [
   "mcp==2.0.0",
   "Pillow>=10.4,<13",
   "httpx>=0.28,<1",
+  "starlette>=0.46,<1",
+  "uvicorn>=0.34,<1",
   "platformdirs>=4.3,<5",
   "python-multipart>=0.0.9,<1",
 ]
@@ -45,4 +47,3 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM"]
-
