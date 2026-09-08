@@ -225,8 +225,9 @@ async function run() {
     assert.equal(state.item.deleted, false);
 
     const settingsResponse = page.waitForResponse((response) => response.url().endsWith('/api/settings'));
+    const visionSettingsResponse = page.waitForResponse((response) => response.url().endsWith('/api/vision'));
     await page.getByRole('tab', { name: '偏好设置' }).click();
-    await settingsResponse;
+    await Promise.all([settingsResponse, visionSettingsResponse]);
     await page.getByRole('heading', { name: '让助手更像你的习惯' }).waitFor();
     await page.locator('#setting-avoid-recent').fill('5');
     const settingsPatchResponse = page.waitForResponse((response) => response.url().endsWith('/api/settings'));
