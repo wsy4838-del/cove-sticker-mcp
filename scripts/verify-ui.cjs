@@ -241,6 +241,25 @@ async function run() {
     await page.getByRole('tab', { name: '偏好设置' }).click();
     await Promise.all([settingsResponse, visionSettingsResponse]);
     await page.getByRole('heading', { name: '让助手更像你的习惯' }).waitFor();
+    await page.waitForFunction(() => {
+      const enabled = document.querySelector('#setting-enabled');
+      const assistant = document.querySelector('#setting-assistant');
+      const autoTag = document.querySelector('#setting-auto-tag');
+      const showFeedback = document.querySelector('#setting-show-feedback');
+      return enabled && assistant && autoTag && showFeedback
+        && enabled.checked === true
+        && assistant.checked === true
+        && autoTag.checked === true
+        && showFeedback.checked === false;
+    });
+    assert.equal(await page.locator('#setting-enabled').isChecked(), true);
+    assert.equal(await page.locator('#setting-assistant').isChecked(), true);
+    assert.equal(await page.locator('#setting-auto-tag').isChecked(), true);
+    assert.equal(await page.locator('#setting-show-feedback').isChecked(), false);
+    assert.equal(await page.locator('#save-settings').isEnabled(), true);
+    assert.equal(await page.locator('#save-vision').isEnabled(), true);
+    assert.equal(await page.locator('#test-vision').isEnabled(), true);
+    await page.waitForTimeout(250);
     await assertNoHorizontalOverflow(page, 'desktop settings');
     if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'desktop-settings.png'), fullPage: true });
     await page.locator('#setting-avoid-recent').fill('5');

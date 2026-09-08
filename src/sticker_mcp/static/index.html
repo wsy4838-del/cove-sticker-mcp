@@ -200,6 +200,7 @@
     .toolbar { display: flex; align-items: center; gap: 10px; margin-top: 17px; padding: 13px; border: 1px solid var(--line); border-radius: 15px; background: rgba(246, 237, 225, .6); }
     .search-wrap { display: flex; align-items: center; flex: 1; min-width: 200px; gap: 8px; }
     .search-wrap input { min-width: 0; }
+    .search-wrap .button { flex: 0 0 auto; white-space: nowrap; }
     .check { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
     .check input { width: 17px; height: 17px; min-height: 0; accent-color: var(--accent); }
 
@@ -449,7 +450,7 @@
               <div><label class="field-label" for="setting-work">正事场景频率</label><select id="setting-work"><option value="off">关闭</option><option value="rare">偶尔</option><option value="normal">自然</option><option value="often">更多</option></select></div>
               <div><label class="field-label" for="setting-avoid-recent">排除最近使用</label><input id="setting-avoid-recent" type="number" min="0" max="20" step="1"><p class="field-hint">在同一会话里避免连续重复，范围 0–20。</p></div>
             </div>
-            <div class="form-actions"><button class="button primary" id="save-settings" type="button">保存偏好设置</button><span class="muted small" id="settings-status" role="status"></span></div>
+            <div class="form-actions"><button class="button primary" id="save-settings" type="button" disabled>保存偏好设置</button><span class="muted small" id="settings-status" role="status"></span></div>
           </section>
 
           <section class="panel settings-card" aria-labelledby="vision-heading">
@@ -460,7 +461,7 @@
               <div class="wide"><label class="field-label" for="vision-base-url">Base URL</label><input id="vision-base-url" type="url" placeholder="https://api.example.com/v1"></div>
               <div class="wide"><label class="field-label" for="vision-api-key">API Key</label><input id="vision-api-key" type="password" autocomplete="new-password" placeholder="已配置则留空；不会显示已有密钥"><p class="field-hint">留空表示保持现有密钥不变。页面不会把已有密钥写入输入框。</p></div>
             </div>
-            <div class="form-actions"><button class="button primary" id="save-vision" type="button">保存视觉配置</button><button class="button soft" id="test-vision" type="button" aria-describedby="vision-cost-note">测试视觉配置 · 一次调用</button><span class="muted small" id="vision-message" role="status"></span></div>
+            <div class="form-actions"><button class="button primary" id="save-vision" type="button" disabled>保存视觉配置</button><button class="button soft" id="test-vision" type="button" aria-describedby="vision-cost-note" disabled>测试视觉配置 · 一次调用</button><span class="muted small" id="vision-message" role="status"></span></div>
             <div class="cost-note" id="vision-cost-note">测试按钮会发起一次真实模型调用，可能产生费用。点击按钮即表示你同意执行这一次调用。</div>
           </section>
         </div>
@@ -499,6 +500,7 @@
         toastTimer: null,
         importFiles: [],
         jobsTimer: null,
+        settingsReady: false,
       };
 
       const statusNames = { queued: '排队中', running: '识别中', done: '已完成', failed: '失败', retryable: '可重试' };
@@ -534,6 +536,11 @@
       function setConnection(label, tone = '') {
         $('connection-state').textContent = label;
         $('connection-dot').className = `connection-dot ${tone}`.trim();
+      }
+
+      function setSettingsActionsReady(ready) {
+        state.settingsReady = Boolean(ready);
+        for (const id of ['save-settings', 'save-vision', 'test-vision']) $(id).disabled = !state.settingsReady;
       }
 
       function setReport(id, message, tone = '') {
@@ -575,6 +582,7 @@
         state.token = $('token').value.trim();
         state.csrf = '';
         state.connected = false;
+        setSettingsActionsReady(false);
         setConnection('连接中…');
         try {
           const payload = await api('/api/csrf');
@@ -1013,16 +1021,19 @@
       }
 
       async function loadSettings() {
+        setSettingsActionsReady(false);
         try {
           const [settings, vision] = await Promise.all([api('/api/settings'), api('/api/vision')]);
           fillSettings(settings);
           fillVision(vision);
+          setSettingsActionsReady(true);
         } catch (error) {
           showToast(`设置加载失败：${error.message || '未知错误'}`, 'error', 0);
         }
       }
 
       async function saveSettings() {
+        if (!state.settingsReady) return;
         const payload = {
           enabled: $('setting-enabled').checked,
           assistant_enabled: $('setting-assistant').checked,
@@ -1044,6 +1055,7 @@
       }
 
       async function saveVision() {
+        if (!state.settingsReady) return;
         const payload = { provider: $('vision-provider').value, model: $('vision-model').value.trim(), base_url: $('vision-base-url').value.trim() };
         const apiKey = $('vision-api-key').value.trim();
         if (apiKey) payload.api_key = apiKey;
@@ -1059,6 +1071,7 @@
       }
 
       async function testVision() {
+        if (!state.settingsReady) return;
         await runBusy($('test-vision'), async () => {
           $('vision-message').textContent = '测试中…';
           try {
