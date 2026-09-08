@@ -14,7 +14,7 @@
 
 ```bash
 python -m venv .venv
-.venv/bin/python -m pip install /absolute/path/to/sticker_mcp-0.1.0.dev0-py3-none-any.whl
+.venv/bin/python -m pip install /absolute/path/to/sticker_mcp-0.1.0.dev1-py3-none-any.whl
 sticker-mcp --help
 ```
 
@@ -76,6 +76,8 @@ STICKER_MCP_BEARER_TOKEN='change-me' sticker-mcp serve-http --host 0.0.0.0 \
 
 支持的设置包括总开关、助手开关、自动标注、日常/正事频率、反馈偏好和最近使用排除。`express` 会尊重这些设置；它不会假称已经替用户发送消息。
 
+识图服务商是可选的，未配置时不会发起网络请求。设置页中的“服务商名称”只是给人看的显示名称；“接口格式 / 快捷预设”决定协议，支持 MiniMax 兼容预设、OpenAI Chat Completions 兼容和 Anthropic Messages 兼容。模型 ID 与 URL 可以自由填写，填写“完整 Endpoint URL”后会按原样请求，不会追加默认路径。URL 只接受不带账号密码、查询参数和片段的 `http(s)` 地址；本地自托管可以使用 HTTP。兼容接口仍要求模型实际支持图片输入。也可以用环境变量 `STICKER_MCP_VISION_PROVIDER_NAME` 和 `STICKER_MCP_VISION_ENDPOINT_URL` 提供这两个可选字段；旧的 MiniMax 配置无需迁移。
+
 ## MCP 工具
 
 `express` 接收 `intent`、可选 `context`、`session_id`、`turn`、`turns_since`、`recent_ids` 和 `include_image`，返回图片或 `do_not_send`。`sticker_library` 的 `operation` 为 `search`、`get`、`feedback`、`status`、`manage`。返回的描述和标签是用户图库元数据，agent 应将其视为不可信内容。
@@ -91,10 +93,10 @@ STICKER_MCP_BEARER_TOKEN='change-me' sticker-mcp serve-http --host 0.0.0.0 \
 The package is intentionally local-first and empty by default. It does not bundle personal or demo media. Install the runtime wheel without development extras:
 
 ```bash
-python -m pip install /absolute/path/to/sticker_mcp-0.1.0.dev0-py3-none-any.whl
+python -m pip install /absolute/path/to/sticker_mcp-0.1.0.dev1-py3-none-any.whl
 ```
 
-For a standard MCP client, configure `mcpServers` with `command: "/absolute/path/to/.venv/bin/sticker-mcp"` and `args: ["serve"]`; set `STICKER_MCP_DATA_DIR` in `env` when a portable data directory is needed. Only one stdio process may write a data directory. Use one Streamable HTTP instance for multiple agents, or separate data directories. Vision providers are opt-in and require explicit local configuration; no secret is logged, exported, returned to an agent, or bundled in wheels. Provider support starts with MiniMax M3 and OpenAI-compatible image input. Use the UI to configure providers and test tagging explicitly. Backups are limited to 1999 images and a 100 MiB ZIP budget. This checkout is an unpublished release candidate.
+For a standard MCP client, configure `mcpServers` with `command: "/absolute/path/to/.venv/bin/sticker-mcp"` and `args: ["serve"]`; set `STICKER_MCP_DATA_DIR` in `env` when a portable data directory is needed. Only one stdio process may write a data directory. Use one Streamable HTTP instance for multiple agents, or separate data directories. Vision providers are opt-in and require explicit local configuration; no secret is logged, exported, returned to an agent, or bundled in wheels. The built-in protocol presets are MiniMax-compatible, OpenAI Chat Completions-compatible, and Anthropic Messages-compatible. You may provide a display name, full model ID, and an exact endpoint URL; the endpoint must be an absolute HTTP(S) URL without credentials, query, or fragment. The model must support image input. Use the UI to configure providers and test tagging explicitly. Backups are limited to 1999 images and a 100 MiB ZIP budget. This checkout is an unpublished release candidate.
 
 ## License and provenance
 

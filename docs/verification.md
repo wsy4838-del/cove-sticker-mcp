@@ -10,16 +10,16 @@ environment:
 
 ```bash
 python -m build --wheel --no-isolation --outdir dist
-python -m venv /private/tmp/sticker-mcp-clean-venv
-/private/tmp/sticker-mcp-clean-venv/bin/python -m pip install dist/sticker_mcp-0.1.0.dev0-py3-none-any.whl
-/private/tmp/sticker-mcp-clean-venv/bin/python -m pip check
+python -m venv /private/tmp/sticker-mcp-final-venv
+/private/tmp/sticker-mcp-final-venv/bin/python -m pip install --force-reinstall dist/sticker_mcp-0.1.0.dev1-py3-none-any.whl
+/private/tmp/sticker-mcp-final-venv/bin/python -m pip check
 ```
 
 The observed clean environment used for this record was:
 
 ```text
 Python 3.13.12
-sticker-mcp 0.1.0.dev0
+sticker-mcp 0.1.0.dev1
 mcp 2.0.0
 starlette 0.52.1
 python-multipart 0.0.32
@@ -41,7 +41,7 @@ that test is not used as the clean-install evidence above.
 
 ## Protocol and behavior checks
 
-The repository test suite completed with `32 passed`. `ruff check .`,
+The repository test suite completed with `39 passed`. `ruff check .`,
 `compileall`, and `git diff --check` also passed. A client launched from the
 cleanly installed wheel completed MCP `initialize` and `tools/list`, returning
 `express` and `sticker_library`; stdout remained protocol-only and logs went to
@@ -49,6 +49,9 @@ stderr. The browser acceptance run separately covered bearer rejection,
 import/edit/manual-field preservation, standard MCP image output, original
 resource reading, backup restore, and a 390px viewport.
 
-`POST /api/vision/test` was not invoked against a live provider during this
+The custom vision provider tests cover exact OpenAI and Anthropic endpoint
+routing, image payloads, headers, URL validation, masked secrets, dynamic
+configuration, and the backward-compatible MiniMax route. `POST
+/api/vision/test` was not invoked against a live provider during this
 verification because it intentionally performs a real, potentially paid model
 request. Provider payload and timeout behavior was tested with HTTP mocks.

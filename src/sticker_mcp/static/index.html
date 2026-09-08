@@ -456,9 +456,11 @@
           <section class="panel settings-card" aria-labelledby="vision-heading">
             <div class="panel-header"><div><p class="section-kicker">VISION</p><h3 id="vision-heading">自动识别视觉配置</h3><p>密钥只用于当前配置，不会回显到页面或备份。</p></div><span class="vision-status" id="vision-status">未连接</span></div>
             <div class="field-grid">
-              <div><label class="field-label" for="vision-provider">Provider</label><select id="vision-provider"><option value="">未启用</option><option value="minimax">MiniMax</option><option value="openai-compatible">OpenAI-compatible</option></select></div>
-              <div><label class="field-label" for="vision-model">模型</label><input id="vision-model" placeholder="例如：MiniMax-M3"></div>
-              <div class="wide"><label class="field-label" for="vision-base-url">Base URL</label><input id="vision-base-url" type="url" placeholder="https://api.example.com/v1"></div>
+              <div><label class="field-label" for="vision-provider-name">服务商名称（可选）</label><input id="vision-provider-name" placeholder="例如：我的本地视觉网关"></div>
+              <div><label class="field-label" for="vision-provider">接口格式 / 快捷预设</label><select id="vision-provider"><option value="">未启用</option><option value="minimax">MiniMax Messages（兼容预设）</option><option value="openai-compatible">OpenAI Chat Completions</option><option value="anthropic-compatible">Anthropic Messages</option></select></div>
+              <div class="wide"><label class="field-label" for="vision-model">完整模型 ID</label><input id="vision-model" placeholder="例如：MiniMax-M3 或 org/model-with-vision"></div>
+              <div class="wide"><label class="field-label" for="vision-base-url">Base URL（默认路径）</label><input id="vision-base-url" type="url" placeholder="https://api.example.com/v1"><p class="field-hint">只接受 http(s) 地址；本地自托管可使用 http。模型必须实际支持图片输入。</p></div>
+              <div class="wide"><label class="field-label" for="vision-endpoint-url">完整 Endpoint URL（可选）</label><input id="vision-endpoint-url" type="url" placeholder="留空按接口格式追加默认路径"><p class="field-hint">填写后按原样请求，不会再追加路径；不能包含账号密码、查询参数或片段。</p></div>
               <div class="wide"><label class="field-label" for="vision-api-key">API Key</label><input id="vision-api-key" type="password" autocomplete="new-password" placeholder="已配置则留空；不会显示已有密钥"><p class="field-hint">留空表示保持现有密钥不变。页面不会把已有密钥写入输入框。</p></div>
             </div>
             <div class="form-actions"><button class="button primary" id="save-vision" type="button" disabled>保存视觉配置</button><button class="button soft" id="test-vision" type="button" aria-describedby="vision-cost-note" disabled>测试视觉配置 · 一次调用</button><span class="muted small" id="vision-message" role="status"></span></div>
@@ -1010,9 +1012,11 @@
       }
 
       function fillVision(vision) {
+        $('vision-provider-name').value = vision.provider_name || '';
         $('vision-provider').value = vision.provider || '';
         $('vision-model').value = vision.model || '';
         $('vision-base-url').value = vision.base_url || '';
+        $('vision-endpoint-url').value = vision.endpoint_url || '';
         $('vision-api-key').value = '';
         $('vision-api-key').placeholder = vision.configured || vision.api_key ? '已配置，不修改请留空' : '输入 API Key（不会回显）';
         const configured = Boolean(vision.configured || vision.api_key);
@@ -1056,7 +1060,13 @@
 
       async function saveVision() {
         if (!state.settingsReady) return;
-        const payload = { provider: $('vision-provider').value, model: $('vision-model').value.trim(), base_url: $('vision-base-url').value.trim() };
+        const payload = {
+          provider_name: $('vision-provider-name').value.trim(),
+          provider: $('vision-provider').value,
+          model: $('vision-model').value.trim(),
+          base_url: $('vision-base-url').value.trim(),
+          endpoint_url: $('vision-endpoint-url').value.trim(),
+        };
         const apiKey = $('vision-api-key').value.trim();
         if (apiKey) payload.api_key = apiKey;
         try {

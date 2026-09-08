@@ -62,8 +62,10 @@ async function startServer() {
     },
     vision: {
       provider: 'openai-compatible',
+      provider_name: '测试视觉网关',
       model: 'vision-test',
       base_url: 'https://example.test/v1',
+      endpoint_url: 'https://example.test/custom/chat',
       api_key: '••••1234',
       configured: true,
     },
@@ -268,11 +270,15 @@ async function run() {
     await settingsPatchResponse;
     assert.equal(state.settings.avoid_recent, 5);
     await page.locator('#vision-api-key').fill('secret-value');
+    await page.locator('#vision-provider-name').fill('自定义测试网关');
+    await page.locator('#vision-endpoint-url').fill('https://example.test/custom/chat');
     const visionPatchResponse = page.waitForResponse((response) => response.url().endsWith('/api/vision'));
     await page.getByRole('button', { name: '保存视觉配置' }).click();
     await visionPatchResponse;
     const visionPatch = requests.find((request) => request.method === 'PATCH' && request.path === '/api/vision');
     assert.equal(JSON.parse(visionPatch.body).api_key, 'secret-value');
+    assert.equal(JSON.parse(visionPatch.body).provider_name, '自定义测试网关');
+    assert.equal(JSON.parse(visionPatch.body).endpoint_url, 'https://example.test/custom/chat');
     assert.equal(visionPatch.headers['x-csrf-token'], 'csrf-test-token');
     const visionTestResponse = page.waitForResponse((response) => response.url().endsWith('/api/vision/test'));
     await page.getByRole('button', { name: /测试视觉配置/ }).click();

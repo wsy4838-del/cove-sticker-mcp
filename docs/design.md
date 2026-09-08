@@ -13,7 +13,7 @@
 
 * `library.py`：SQLite 事务、内容哈希、标签检索、软删除、反馈、会话频率与设置。
 * `assets.py`：媒体路径只由内容哈希生成；Pillow 解码验证；尺寸、格式、ZIP 预算与路径穿越防护。
-* `vision.py`：无密钥时完全禁用网络；MiniMax M3 和 OpenAI-compatible 只接受显式配置；响应 JSON 受限、图片缩小、超时和单 worker 队列。
+* `vision.py`：无密钥时完全禁用网络；MiniMax、OpenAI Chat Completions-compatible 和 Anthropic Messages-compatible 只接受显式配置。服务商名称仅作显示，完整 endpoint 可覆盖默认路径；响应 JSON 受限、图片缩小、超时和单 worker 队列。
 * `web.py`：同进程静态管理页面和回环 HTTP API；写请求要求同源 `Origin`/`Referer`，远程 HTTP 由 bearer 鉴权保护。
 * `mcp_server.py`：官方 Python MCP SDK 2.0.0；stdio 与 Streamable HTTP 复用服务。stdio 的任何日志只走 stderr，HTTP 的图片使用 SDK `ImageContent`，文本明确标注为图库元数据。
 

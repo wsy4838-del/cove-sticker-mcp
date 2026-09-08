@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sticker-mcp"
-version = "0.1.0.dev0"
+version = "0.1.0.dev1"
 description = "Local-first custom sticker library and standard MCP server for agents."
 readme = "README.md"
 requires-python = ">=3.11"

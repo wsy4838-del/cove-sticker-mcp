@@ -120,11 +120,17 @@ async def test_web_vision_settings_are_masked_and_settings_types_are_strict(tmp_
 
 @pytest.mark.asyncio
 async def test_vision_configuration_reloads_queue_for_auto_and_manual_tagging(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_configs = []
+
     class FakeVision:
         async def describe(self, image: bytes, mime_type: str, filename: str) -> dict[str, object]:
             return {"description": "自动识别完成", "keywords": ["测试"]}
 
-    monkeypatch.setattr(web_module, "HttpVisionProvider", lambda config: FakeVision())
+    def fake_provider(config):
+        captured_configs.append(config)
+        return FakeVision()
+
+    monkeypatch.setattr(web_module, "HttpVisionProvider", fake_provider)
     library = StickerLibrary(tmp_path)
     queue = TagQueue(library, FakeVision(), enabled=False)
     app = create_app(library, queue=queue)
@@ -136,15 +142,18 @@ async def test_vision_configuration_reloads_queue_for_auto_and_manual_tagging(tm
         configured = await client.patch(
             "/api/vision", headers=headers,
             json={
-                "provider": "minimax",
-                "provider_name": "MiniMax 预设",
-                "model": "MiniMax-M3",
-                "base_url": "https://api.example",
-                "endpoint_url": "",
+                "provider": "anthropic-compatible",
+                "provider_name": "自定义 Anthropic 网关",
+                "model": "org/vision-model",
+                "base_url": "https://api.example/v1",
+                "endpoint_url": "https://api.example/custom/messages",
                 "api_key": "secret",
             },
         )
         assert configured.status_code == 200
+        assert captured_configs[-1].provider == "anthropic-compatible"
+        assert captured_configs[-1].provider_name == "自定义 Anthropic 网关"
+        assert captured_configs[-1].endpoint_url == "https://api.example/custom/messages"
         imported = await client.post(
             "/api/stickers", headers=headers,
             files={"files": ("x.png", png_bytes(), "image/png")},
@@ -157,6 +166,10 @@ async def test_vision_configuration_reloads_queue_for_auto_and_manual_tagging(tm
             await asyncio.sleep(0.02)
             deadline -= 0.02
         assert library.get(sticker_id).description == "自动识别完成"
+        tested = await client.post("/api/vision/test", headers=headers, json={"confirm_cost": True})
+        assert tested.status_code == 200
+        assert captured_configs[-1].provider == "anthropic-compatible"
+        assert captured_configs[-1].endpoint_url == "https://api.example/custom/messages"
         manual = await client.post("/api/tag", headers=headers, json={"ids": [sticker_id]})
         assert manual.status_code == 202
     queue.shutdown()
