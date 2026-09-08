@@ -176,6 +176,7 @@ async function run() {
     await page.getByRole('button', { name: '连接' }).click();
     await page.getByRole('heading', { name: '找到此刻最像你的那张' }).waitFor();
     await page.locator('.sticker-card').first().waitFor();
+    await page.locator('.card-image').first().evaluate((image) => image.complete ? undefined : new Promise((resolve) => image.addEventListener('load', resolve, { once: true })));
 
     assert.equal(await page.locator('.sticker-card .card-title').textContent(), fixture.description);
     assert.equal(await page.locator('.sticker-card .card-title b').count(), 0, 'metadata must stay text, never become markup');
