@@ -11,7 +11,9 @@ Reviewed for the first public GitHub push on 2026-09-08.
   findings. Its official archive checksum was verified before execution.
 - The wheel and source distribution were inspected: no personal image library,
   database, environment file, API key file or private local path is included.
-- Runtime data and credential patterns are excluded by `.gitignore`.
+- Runtime data, credentials, backup ZIPs and metadata manifests, lock files
+  and hidden temporary files are excluded by `.gitignore`, including when a
+  user explicitly points the data directory inside the source checkout.
 - The source test suite passed 39 tests; lint and whitespace checks passed.
 - The renamed package was installed into an isolated environment with normal
   runtime dependency resolution; the new and compatibility CLI names work.

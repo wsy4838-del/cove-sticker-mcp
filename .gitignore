@@ -21,3 +21,9 @@ vision-secrets.json
 *.db
 assets/
 .verification-venv/
+
+# Backups and transient files can contain private image metadata.
+instance.lock
+*.zip
+*.manifest.json
+.*.tmp
