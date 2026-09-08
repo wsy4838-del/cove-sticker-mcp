@@ -20,6 +20,7 @@ from .assets import (
 )
 from .models import BackupBundle, ImportReport, SearchResult, Settings, Sticker
 from .storage import Database
+from .urls import validate_http_url
 
 
 def _now() -> str:
@@ -299,7 +300,11 @@ class StickerLibrary:
         value = self.db.get_setting("vision") or {}
         if not isinstance(value, dict):
             return {}
-        return {key: str(value[key]) for key in ("provider", "model", "base_url", "api_key_env") if isinstance(value.get(key), str)}
+        return {
+            key: str(value[key])
+            for key in ("provider", "provider_name", "model", "base_url", "endpoint_url", "api_key_env")
+            if isinstance(value.get(key), str)
+        }
 
     def vision_api_key(self) -> str:
         secret_path = self.root / "vision-secrets.json"
@@ -310,7 +315,7 @@ class StickerLibrary:
         return value.get("api_key", "") if isinstance(value, dict) and isinstance(value.get("api_key"), str) else ""
 
     def update_vision_settings(self, **changes: Any) -> dict[str, str]:
-        allowed = {"provider", "model", "base_url", "api_key_env", "api_key"}
+        allowed = {"provider", "provider_name", "model", "base_url", "endpoint_url", "api_key_env", "api_key"}
         if set(changes) - allowed:
             raise ValueError("unknown vision setting")
         current = self.vision_settings()
@@ -318,8 +323,10 @@ class StickerLibrary:
         for key, value in changes.items():
             if not isinstance(value, str) or len(value) > 500:
                 raise ValueError("vision settings must be short strings")
-            if key == "provider" and value not in {"", "minimax", "openai-compatible"}:
+            if key == "provider" and value not in {"", "minimax", "openai-compatible", "anthropic-compatible"}:
                 raise ValueError("unsupported vision provider")
+            if key in {"base_url", "endpoint_url"}:
+                validate_http_url(value, field=f"vision {key}")
             if key == "api_key_env" and value and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,80}", value):
                 raise ValueError("invalid API key environment name")
             if key == "api_key":

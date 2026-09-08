@@ -85,6 +85,8 @@ class WebController:
             base_url=settings.get("base_url", "") or os.environ.get("STICKER_MCP_VISION_BASE_URL", ""),
             api_key_env=settings.get("api_key_env", "") or os.environ.get("STICKER_MCP_VISION_API_KEY_ENV", default_env),
             api_key=self.library.vision_api_key(),
+            provider_name=settings.get("provider_name", "") or os.environ.get("STICKER_MCP_VISION_PROVIDER_NAME", ""),
+            endpoint_url=settings.get("endpoint_url", "") or os.environ.get("STICKER_MCP_VISION_ENDPOINT_URL", ""),
         )
 
     def _refresh_queue(self) -> TagQueue:

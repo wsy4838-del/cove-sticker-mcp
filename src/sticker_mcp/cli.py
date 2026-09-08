@@ -45,6 +45,8 @@ def vision_config(overrides: dict[str, str] | None = None, *, api_key: str = "")
         timeout_seconds=min(120.0, max(5.0, float(os.environ.get("STICKER_MCP_VISION_TIMEOUT", "45")))),
         max_output_tokens=min(2000, max(100, int(os.environ.get("STICKER_MCP_VISION_MAX_OUTPUT", "1000")))),
         api_key=api_key,
+        provider_name=str(overrides.get("provider_name") or os.environ.get("STICKER_MCP_VISION_PROVIDER_NAME", "")).strip(),
+        endpoint_url=str(overrides.get("endpoint_url") or os.environ.get("STICKER_MCP_VISION_ENDPOINT_URL", "")).strip(),
     )
 
 

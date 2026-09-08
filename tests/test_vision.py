@@ -298,6 +298,26 @@ async def test_unknown_vision_protocol_is_rejected_without_openai_fallback() -> 
     assert called is False
 
 
+@pytest.mark.asyncio
+async def test_invalid_provider_json_is_not_reported_as_url_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not json", headers={"content-type": "text/plain"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = HttpVisionProvider(
+        VisionConfig(
+            provider="openai-compatible",
+            model="vision",
+            base_url="https://api.example/v1",
+            api_key="secret",
+        ),
+        client,
+    )
+    with pytest.raises(VisionError, match="invalid JSON"):
+        await provider.describe(png_bytes(), "image/png", "x.png")
+    await client.aclose()
+
+
 def test_custom_vision_settings_roundtrip_and_invalid_update_is_atomic(tmp_path: Path) -> None:
     library = StickerLibrary(tmp_path)
     library.update_vision_settings(
@@ -314,7 +334,6 @@ def test_custom_vision_settings_roundtrip_and_invalid_update_is_atomic(tmp_path:
         "model": "org/model-with-vision",
         "base_url": "http://127.0.0.1:9000/v1",
         "endpoint_url": "http://127.0.0.1:9000/custom/messages",
-        "api_key_env": "",
     }
     assert library.vision_api_key() == "secret"
 
