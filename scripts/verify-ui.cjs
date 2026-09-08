@@ -77,7 +77,10 @@ async function startServer() {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(fs.readFileSync(index));
     }
-    if (url.pathname === '/api/csrf' && req.method === 'GET') return json(res, { token: 'csrf-test-token' });
+    if (url.pathname === '/api/csrf' && req.method === 'GET') {
+      if (req.headers.authorization !== 'Bearer demo-token') return json(res, { error: 'forbidden' }, 403);
+      return json(res, { token: 'csrf-test-token' });
+    }
     if (url.pathname === '/assets/one' && req.method === 'GET') {
       res.writeHead(200, { 'content-type': 'image/png' });
       return res.end(onePixel);
