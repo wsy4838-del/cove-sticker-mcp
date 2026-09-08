@@ -165,10 +165,20 @@ async function startServer() {
   return { server, requests, state, origin: `http://127.0.0.1:${server.address().port}` };
 }
 
+async function assertNoHorizontalOverflow(page, label) {
+  const dimensions = await page.evaluate(() => ({
+    innerWidth: window.innerWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  assert.ok(dimensions.scrollWidth <= dimensions.innerWidth, `${label} overflows horizontally: ${JSON.stringify(dimensions)}`);
+}
+
 async function run() {
   const { server, requests, state, origin } = await startServer();
   let browser;
+  const screenshotDir = process.env.UI_SCREENSHOT_DIR ? path.resolve(process.env.UI_SCREENSHOT_DIR) : '';
   try {
+    if (screenshotDir) fs.mkdirSync(screenshotDir, { recursive: true });
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(origin, { waitUntil: 'domcontentloaded' });
@@ -183,6 +193,8 @@ async function run() {
       };
       check();
     }));
+    await assertNoHorizontalOverflow(page, 'desktop gallery');
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'desktop-gallery.png'), fullPage: true });
 
     assert.equal(await page.locator('.sticker-card .card-title').textContent(), fixture.description);
     assert.equal(await page.locator('.sticker-card .card-title b').count(), 0, 'metadata must stay text, never become markup');
@@ -229,6 +241,8 @@ async function run() {
     await page.getByRole('tab', { name: '偏好设置' }).click();
     await Promise.all([settingsResponse, visionSettingsResponse]);
     await page.getByRole('heading', { name: '让助手更像你的习惯' }).waitFor();
+    await assertNoHorizontalOverflow(page, 'desktop settings');
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'desktop-settings.png'), fullPage: true });
     await page.locator('#setting-avoid-recent').fill('5');
     const settingsPatchResponse = page.waitForResponse((response) => response.url().endsWith('/api/settings'));
     await page.getByRole('button', { name: '保存偏好设置' }).click();
@@ -262,6 +276,13 @@ async function run() {
     await page.getByRole('button', { name: '重试' }).click();
     await page.getByText('排队中').waitFor();
     assert.equal(state.jobs[0].status, 'queued');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('tab', { name: '图库' }).click();
+    await page.locator('.sticker-card').first().waitFor();
+    await assertNoHorizontalOverflow(page, 'mobile gallery');
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'mobile-gallery.png'), fullPage: true });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByRole('tab', { name: '偏好设置' }).click();
     await page.getByRole('button', { name: '下载备份' }).click();
     assert.ok(requests.some((request) => request.path === '/api/backup'));
 
