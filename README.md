@@ -6,9 +6,19 @@
 
 ## 状态
 
-当前是最小可用开发版。MCP SDK 固定为 `2.0.0`；stdio 和 Streamable HTTP 共用同一服务层。宿主是否把 `ImageContent` 显示成聊天气泡、是否能把图片发送到外部平台，由宿主决定。
+当前是最小可用开发版和未公开发布候选版，尚未上传 PyPI、创建 Release 或推送公开仓库。MCP SDK 固定为 `2.0.0`；stdio 和 Streamable HTTP 共用同一服务层。宿主是否把 `ImageContent` 显示成聊天气泡、是否能把图片发送到外部平台，由宿主决定。
 
 ## 安装
+
+普通使用只需要安装运行时 wheel，不需要安装 dev extras：
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install /absolute/path/to/sticker_mcp-0.1.0.dev0-py3-none-any.whl
+sticker-mcp --help
+```
+
+从源码开发和运行测试时才安装开发依赖：
 
 ```bash
 python -m venv .venv
@@ -24,6 +34,24 @@ sticker-mcp web --open
 ```
 
 在 MCP 客户端使用 stdio 时，将命令配置为 `sticker-mcp serve`。stdio 的 stdout 只输出 MCP 协议，日志全部走 stderr。
+
+支持标准 MCP 客户端的 `mcpServers` 配置可以直接使用下面的结构。把两个绝对路径替换为本机路径；如果 `sticker-mcp` 已经在客户端的 `PATH` 中，也可以把 `command` 改为 `sticker-mcp`。
+
+```json
+{
+  "mcpServers": {
+    "sticker-mcp": {
+      "command": "/absolute/path/to/.venv/bin/sticker-mcp",
+      "args": ["serve"],
+      "env": {
+        "STICKER_MCP_DATA_DIR": "/absolute/path/to/sticker-data"
+      }
+    }
+  }
+}
+```
+
+每个数据目录只能由一个 `sticker-mcp` 进程写入。需要连接多个 agent 时，启动一个 Streamable HTTP 实例供它们共用，或者为每个实例设置不同的 `STICKER_MCP_DATA_DIR`。stdio 管理页面默认使用 `8765` 端口；测试或不需要页面时可以用 `sticker-mcp serve --ui-port 0` 关闭附带页面。
 
 Streamable HTTP 默认只监听 `127.0.0.1:8765`：
 
@@ -56,11 +84,17 @@ STICKER_MCP_BEARER_TOKEN='change-me' sticker-mcp serve-http --host 0.0.0.0 \
 
 ## 备份和恢复
 
-管理页面可导出不含密钥的 ZIP 备份。恢复时会重新计算每张图片的实际哈希并完整验证，路径、扩展名和备份 ID 不被信任；坏图片、坏 schema 或恶意路径会让整个恢复失败且不产生部分导入。
+管理页面可导出不含密钥的 ZIP 备份。恢复时会重新计算每张图片的实际哈希并完整验证，路径、扩展名和备份 ID 不被信任；坏图片、坏 schema 或恶意路径会让整个恢复失败且不产生部分导入。单个备份最多包含 1999 张图片，ZIP 总预算为 100 MiB；超过限制会明确失败，首版不自动分卷。
 
 ## English
 
-The package is intentionally local-first and empty by default. It does not bundle personal or demo media. Set `STICKER_MCP_DATA_DIR` for a portable data directory. Vision providers are opt-in and require explicit local configuration; no secret is logged, exported, returned to an agent, or bundled in wheels. Provider support starts with MiniMax M3 and OpenAI-compatible image input. Use the UI to configure providers and test tagging explicitly.
+The package is intentionally local-first and empty by default. It does not bundle personal or demo media. Install the runtime wheel without development extras:
+
+```bash
+python -m pip install /absolute/path/to/sticker_mcp-0.1.0.dev0-py3-none-any.whl
+```
+
+For a standard MCP client, configure `mcpServers` with `command: "/absolute/path/to/.venv/bin/sticker-mcp"` and `args: ["serve"]`; set `STICKER_MCP_DATA_DIR` in `env` when a portable data directory is needed. Only one stdio process may write a data directory. Use one Streamable HTTP instance for multiple agents, or separate data directories. Vision providers are opt-in and require explicit local configuration; no secret is logged, exported, returned to an agent, or bundled in wheels. Provider support starts with MiniMax M3 and OpenAI-compatible image input. Use the UI to configure providers and test tagging explicitly. Backups are limited to 1999 images and a 100 MiB ZIP budget. This checkout is an unpublished release candidate.
 
 ## License and provenance
 
