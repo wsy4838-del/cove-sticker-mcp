@@ -218,17 +218,25 @@ async function run() {
     await page.getByText('已恢复').waitFor();
     assert.equal(state.item.deleted, false);
 
+    const settingsResponse = page.waitForResponse((response) => response.url().endsWith('/api/settings'));
     await page.getByRole('tab', { name: '偏好设置' }).click();
+    await settingsResponse;
     await page.getByRole('heading', { name: '让助手更像你的习惯' }).waitFor();
     await page.locator('#setting-avoid-recent').fill('5');
+    const settingsPatchResponse = page.waitForResponse((response) => response.url().endsWith('/api/settings'));
     await page.getByRole('button', { name: '保存偏好设置' }).click();
+    await settingsPatchResponse;
     assert.equal(state.settings.avoid_recent, 5);
     await page.locator('#vision-api-key').fill('secret-value');
+    const visionPatchResponse = page.waitForResponse((response) => response.url().endsWith('/api/vision'));
     await page.getByRole('button', { name: '保存视觉配置' }).click();
+    await visionPatchResponse;
     const visionPatch = requests.find((request) => request.method === 'PATCH' && request.path === '/api/vision');
     assert.equal(JSON.parse(visionPatch.body).api_key, 'secret-value');
     assert.equal(visionPatch.headers['x-csrf-token'], 'csrf-test-token');
+    const visionTestResponse = page.waitForResponse((response) => response.url().endsWith('/api/vision/test'));
     await page.getByRole('button', { name: /测试视觉配置/ }).click();
+    await visionTestResponse;
     const visionTest = requests.find((request) => request.path === '/api/vision/test');
     assert.equal(JSON.parse(visionTest.body).confirm_cost, true);
 
