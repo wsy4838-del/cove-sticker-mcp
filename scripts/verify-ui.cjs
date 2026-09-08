@@ -209,7 +209,7 @@ async function run() {
     const singleTag = requests.find((request) => request.path === '/api/tag');
     assert.deepEqual(JSON.parse(singleTag.body).ids, ['one']);
 
-    await page.getByRole('button', { name: '喜欢' }).click();
+    await page.getByRole('button', { name: '喜欢', exact: true }).click();
     assert.ok(requests.some((request) => request.path === '/api/stickers/one/feedback'));
     await page.getByRole('button', { name: '软删除' }).click();
     await page.getByText('已移入回收站').waitFor();
