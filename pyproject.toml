@@ -3,13 +3,13 @@ requires = ["hatchling>=1.25,<2"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sticker-mcp"
+name = "cove-sticker-mcp"
 version = "0.1.0.dev1"
 description = "Local-first custom sticker library and standard MCP server for agents."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-authors = [{name = "moonlin"}]
+authors = [{name = "moonlin1213"}]
 dependencies = [
   "mcp==2.0.0",
   "Pillow>=10.4,<13",
@@ -29,7 +29,12 @@ dev = [
   "build>=1.2,<2",
 ]
 
+[project.urls]
+Repository = "https://github.com/moonlin1213/cove-sticker-mcp"
+Issues = "https://github.com/moonlin1213/cove-sticker-mcp/issues"
+
 [project.scripts]
+cove-sticker-mcp = "sticker_mcp.cli:main"
 sticker-mcp = "sticker_mcp.cli:main"
 
 [tool.hatch.build.targets.wheel]

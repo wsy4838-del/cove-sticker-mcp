@@ -12,3 +12,12 @@ data/
 coverage.xml
 htmlcov/
 
+
+# Local credentials and user media must never enter source control.
+.env.*
+vision-secrets.json
+*.sqlite3
+*.sqlite3-*
+*.db
+assets/
+.verification-venv/

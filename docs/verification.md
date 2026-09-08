@@ -9,17 +9,17 @@ Build the wheel without installing the development extras into the runtime
 environment:
 
 ```bash
-python -m build --wheel --no-isolation --outdir dist
-python -m venv /private/tmp/sticker-mcp-final-venv
-/private/tmp/sticker-mcp-final-venv/bin/python -m pip install --force-reinstall dist/sticker_mcp-0.1.0.dev1-py3-none-any.whl
-/private/tmp/sticker-mcp-final-venv/bin/python -m pip check
+python -m build --wheel --sdist --no-isolation --outdir dist
+python -m venv .verification-venv
+.verification-venv/bin/python -m pip install --force-reinstall dist/cove_sticker_mcp-0.1.0.dev1-py3-none-any.whl
+.verification-venv/bin/python -m pip check
 ```
 
 The observed clean environment used for this record was:
 
 ```text
 Python 3.13.12
-sticker-mcp 0.1.0.dev1
+cove-sticker-mcp 0.1.0.dev1
 mcp 2.0.0
 starlette 0.52.1
 python-multipart 0.0.32

@@ -1,4 +1,4 @@
-# sticker-mcp
+# cove-sticker-mcp
 
 一个本地优先、可迁移的自定义表情包 MCP：一次安装即可导入图片、自动标注、搜索和按语境取图。默认不调用任何付费模型。
 
@@ -6,17 +6,19 @@
 
 ## 状态
 
-当前是最小可用开发版和未公开发布候选版，尚未上传 PyPI、创建 Release 或推送公开仓库。MCP SDK 固定为 `2.0.0`；stdio 和 Streamable HTTP 共用同一服务层。宿主是否把 `ImageContent` 显示成聊天气泡、是否能把图片发送到外部平台，由宿主决定。
+当前是最小可用开发版，支持从 GitHub 源码安装，尚未上传 PyPI 或创建 Release。MCP SDK 固定为 `2.0.0`；stdio 和 Streamable HTTP 共用同一服务层。宿主是否把 `ImageContent` 显示成聊天气泡、是否能把图片发送到外部平台，由宿主决定。
 
 ## 安装
 
-普通使用只需要安装运行时 wheel，不需要安装 dev extras：
+需要 Python 3.11 或更新版本。普通使用可以直接从 GitHub 安装，不需要安装 dev extras：
 
 ```bash
 python -m venv .venv
-.venv/bin/python -m pip install /absolute/path/to/sticker_mcp-0.1.0.dev1-py3-none-any.whl
-sticker-mcp --help
+.venv/bin/python -m pip install "git+https://github.com/moonlin1213/cove-sticker-mcp.git@main"
+.venv/bin/cove-sticker-mcp --help
 ```
+
+Windows 可将 `.venv/bin/python` 换成 `.venv\Scripts\python.exe`，命令程序位于 `.venv\Scripts`。激活虚拟环境后可直接使用 `cove-sticker-mcp`；旧命令名 `sticker-mcp` 也保留兼容。以下示例使用该兼容命令，需先激活虚拟环境，或填写它的完整路径。
 
 从源码开发和运行测试时才安装开发依赖：
 
@@ -40,7 +42,7 @@ sticker-mcp web --open
 ```json
 {
   "mcpServers": {
-    "sticker-mcp": {
+    "cove-sticker-mcp": {
       "command": "/absolute/path/to/.venv/bin/sticker-mcp",
       "args": ["serve"],
       "env": {
@@ -90,13 +92,17 @@ STICKER_MCP_BEARER_TOKEN='change-me' sticker-mcp serve-http --host 0.0.0.0 \
 
 ## English
 
-The package is intentionally local-first and empty by default. It does not bundle personal or demo media. Install the runtime wheel without development extras:
+The package is intentionally local-first and empty by default. It does not bundle personal or demo media. Install from GitHub without development extras:
 
 ```bash
-python -m pip install /absolute/path/to/sticker_mcp-0.1.0.dev1-py3-none-any.whl
+python -m pip install "git+https://github.com/moonlin1213/cove-sticker-mcp.git@main"
 ```
 
-For a standard MCP client, configure `mcpServers` with `command: "/absolute/path/to/.venv/bin/sticker-mcp"` and `args: ["serve"]`; set `STICKER_MCP_DATA_DIR` in `env` when a portable data directory is needed. Only one stdio process may write a data directory. Use one Streamable HTTP instance for multiple agents, or separate data directories. Vision providers are opt-in and require explicit local configuration; no secret is logged, exported, returned to an agent, or bundled in wheels. The built-in protocol presets are MiniMax-compatible, OpenAI Chat Completions-compatible, and Anthropic Messages-compatible. You may provide a display name, full model ID, and an exact endpoint URL; the endpoint must be an absolute HTTP(S) URL without credentials, query, or fragment. The model must support image input. Use the UI to configure providers and test tagging explicitly. Backups are limited to 1999 images and a 100 MiB ZIP budget. This checkout is an unpublished release candidate.
+For a standard MCP client, configure `mcpServers` with `command: "/absolute/path/to/.venv/bin/sticker-mcp"` and `args: ["serve"]`; set `STICKER_MCP_DATA_DIR` in `env` when a portable data directory is needed. Only one stdio process may write a data directory. Use one Streamable HTTP instance for multiple agents, or separate data directories. Vision providers are opt-in and require explicit local configuration; no secret is logged, exported, returned to an agent, or bundled in wheels. The built-in protocol presets are MiniMax-compatible, OpenAI Chat Completions-compatible, and Anthropic Messages-compatible. You may provide a display name, full model ID, and an exact endpoint URL; the endpoint must be an absolute HTTP(S) URL without credentials, query, or fragment. The model must support image input. Use the UI to configure providers and test tagging explicitly. Backups are limited to 1999 images and a 100 MiB ZIP budget. This is a development version; PyPI and GitHub Releases are not published yet.
+
+## 数据与隐私
+
+图库默认保存在本机，不含预装图片。启用自动识图后，待识别图片的压缩预览会发给用户配置的 Provider；MCP 取图时，选中的图片和描述会交给所连接的 agent。原图资源和备份保留导入图片的原始字节，可能含图片原有的 EXIF 等元数据；分享前请自行确认。API Key 存在本地私有文件或环境变量中，不进入图库备份。
 
 ## License and provenance
 
