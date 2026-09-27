@@ -151,6 +151,9 @@ def create_server(
         title="发送表情包",
         description=EXPRESS_DESCRIPTION,
         resource_uri=STICKER_CARD_URI,
+        meta={
+            "openai/outputTemplate": STICKER_CARD_URI,
+        },
     )
     async def express(
         intent: str,
