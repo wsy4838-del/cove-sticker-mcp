@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
 
   <title>表情包</title>
 
@@ -89,11 +92,61 @@
 <body>
 
   <div id="app">
-    <div class="empty">正在加载表情包……</div>
+    <div class="empty">
+      正在连接表情包……
+    </div>
   </div>
 
   <script>
     const app = document.getElementById("app");
+
+    /*
+     * ==========================================
+     * MCP Apps 标准桥接
+     * ==========================================
+     */
+
+    let rpcId = 0;
+
+    const pendingRequests = new Map();
+
+    function rpcNotify(method, params = {}) {
+      window.parent.postMessage(
+        {
+          jsonrpc: "2.0",
+          method,
+          params
+        },
+        "*"
+      );
+    }
+
+    function rpcRequest(method, params = {}) {
+      return new Promise((resolve, reject) => {
+        const id = ++rpcId;
+
+        pendingRequests.set(id, {
+          resolve,
+          reject
+        });
+
+        window.parent.postMessage(
+          {
+            jsonrpc: "2.0",
+            id,
+            method,
+            params
+          },
+          "*"
+        );
+      });
+    }
+
+    /*
+     * ==========================================
+     * HTML 安全转义
+     * ==========================================
+     */
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -104,12 +157,27 @@
         .replaceAll("'", "&#039;");
     }
 
+    /*
+     * ==========================================
+     * 从 MCP Tool Result 中取得数据
+     * ==========================================
+     */
+
     function getToolResult(message) {
-      return message?.params?.structuredContent
-        ?? message?.params?.result
-        ?? message?.result
-        ?? null;
+      return (
+        message?.params?.structuredContent ??
+        message?.params?.result?.structuredContent ??
+        message?.params?.result ??
+        message?.result ??
+        null
+      );
     }
+
+    /*
+     * ==========================================
+     * 渲染表情包
+     * ==========================================
+     */
 
     function render(data) {
       if (!data) {
@@ -118,12 +186,10 @@
             暂时没有收到表情包数据
           </div>
         `;
+
         return;
       }
 
-      /*
-       * 兼容我们之前给 MCP 加入的 image_url 字段。
-       */
       const imageUrl =
         data.image_url ||
         data.imageUrl ||
@@ -138,8 +204,11 @@
       const description =
         data.description ||
         data.caption ||
-        data.tags ||
         "";
+
+      /*
+       * 没有图片地址
+       */
 
       if (!imageUrl) {
         app.innerHTML = `
@@ -147,11 +216,17 @@
             找到了表情包，但没有收到图片地址。
           </div>
         `;
+
         return;
       }
 
+      /*
+       * 渲染图片卡片
+       */
+
       app.innerHTML = `
         <div class="card">
+
           <div class="image-box">
             <img
               src="${escapeHtml(imageUrl)}"
@@ -161,92 +236,239 @@
           </div>
 
           <div class="info">
+
             <div class="title">
               ${escapeHtml(title)}
             </div>
 
             ${
               description
-                ? `<div class="description">
-                     ${escapeHtml(description)}
-                   </div>`
+                ? `
+                  <div class="description">
+                    ${escapeHtml(description)}
+                  </div>
+                `
                 : ""
             }
+
           </div>
+
         </div>
       `;
 
+      /*
+       * 图片加载失败
+       */
+
       const img = app.querySelector("img");
 
-      img.addEventListener("error", () => {
-        app.innerHTML = `
-          <div class="error">
-            图片地址已经收到，但图片加载失败。<br>
-            我们下一步再检查图片地址。
-          </div>
-        `;
-      });
+      if (img) {
+        img.addEventListener("error", () => {
+          app.innerHTML = `
+            <div class="error">
+              图片地址已经收到，
+              但是图片加载失败。
+            </div>
+          `;
+        });
+      }
     }
 
     /*
-     * MCP Apps 标准：
-     * ChatGPT 会通过 postMessage
-     * 把工具结果发送给这个 HTML。
+     * ==========================================
+     * 接收 Host 消息
+     * ==========================================
      */
+
     window.addEventListener(
       "message",
       (event) => {
+
         if (event.source !== window.parent) {
           return;
         }
 
         const message = event.data;
 
-        if (!message || message.jsonrpc !== "2.0") {
+        if (
+          !message ||
+          message.jsonrpc !== "2.0"
+        ) {
           return;
         }
+
+        /*
+         * JSON-RPC response
+         */
+
+        if (
+          typeof message.id === "number"
+        ) {
+
+          const pending =
+            pendingRequests.get(
+              message.id
+            );
+
+          if (!pending) {
+            return;
+          }
+
+          pendingRequests.delete(
+            message.id
+          );
+
+          if (message.error) {
+            pending.reject(
+              message.error
+            );
+
+            return;
+          }
+
+          pending.resolve(
+            message.result
+          );
+
+          return;
+        }
+
+        /*
+         * JSON-RPC notification
+         */
+
+        if (
+          typeof message.method !== "string"
+        ) {
+          return;
+        }
+
+        /*
+         * 工具输入
+         */
+
+        if (
+          message.method ===
+          "ui/notifications/tool-input"
+        ) {
+          return;
+        }
+
+        /*
+         * 工具结果
+         */
 
         if (
           message.method ===
           "ui/notifications/tool-result"
         ) {
-          const result = getToolResult(message);
+
+          const result =
+            getToolResult(message);
 
           if (result) {
             render(result);
           }
+
+          return;
         }
       },
-      { passive: true }
+      {
+        passive: true
+      }
     );
 
     /*
-     * ChatGPT 兼容方式。
-     * 如果宿主提供 window.openai.toolOutput，
-     * 也尝试从那里读取数据。
+     * ==========================================
+     * MCP Apps 初始化
+     * ==========================================
      */
-    function checkOpenAIOutput() {
+
+    async function initializeBridge() {
+
+      const appInfo = {
+        name: "cove-sticker-card",
+        version: "1.0.0",
+        title: "表情包"
+      };
+
+      const appCapabilities = {};
+
+      /*
+       * 当前 MCP Apps 标准版本
+       */
+
+      const protocolVersion =
+        "2026-01-26";
+
       try {
+
+        await rpcRequest(
+          "ui/initialize",
+          {
+            appInfo,
+            appCapabilities,
+            protocolVersion
+          }
+        );
+
+        /*
+         * 告诉 Host：
+         * UI 已经准备好了
+         */
+
+        rpcNotify(
+          "ui/notifications/initialized",
+          {}
+        );
+
+      } catch (error) {
+
+        console.log(
+          "MCP Apps 初始化失败",
+          error
+        );
+
+      }
+
+      /*
+       * ChatGPT 兼容读取。
+       *
+       * 如果 Host 同时提供 window.openai，
+       * 也尝试读取 toolOutput。
+       */
+
+      try {
+
         if (
           window.openai &&
           window.openai.toolOutput
         ) {
-          render(window.openai.toolOutput);
+
+          render(
+            window.openai.toolOutput
+          );
+
         }
+
       } catch (error) {
+
         console.log(
           "读取 window.openai.toolOutput 失败",
           error
         );
+
       }
     }
 
-    checkOpenAIOutput();
+    /*
+     * ==========================================
+     * 启动
+     * ==========================================
+     */
 
-    window.addEventListener(
-      "openai:set_globals",
-      checkOpenAIOutput
-    );
+    initializeBridge();
+
   </script>
 
 </body>
