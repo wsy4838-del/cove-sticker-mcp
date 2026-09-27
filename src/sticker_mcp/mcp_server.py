@@ -169,6 +169,9 @@ def create_server(
         )
 
     @apps.tool(
+        name="express",
+        title="发送表情包",
+        description=EXPRESS_DESCRIPTION,
         resource_uri=STICKER_CARD_URI,
     )
     async def express(
@@ -258,6 +261,9 @@ def create_server(
         )
 
     @apps.tool(
+        name="sticker_library",
+        title="表情包图库",
+        description=LIBRARY_DESCRIPTION,
         resource_uri=STICKER_CARD_URI,
     )
     async def sticker_library(
