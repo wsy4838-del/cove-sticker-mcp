@@ -146,28 +146,6 @@ def create_server(
         csp=resource_csp,
     )
 
-    server = MCPServer(
-        "sticker-mcp",
-        extensions=[apps],
-    )
-
-    @server.resource(
-        "sticker://{sticker_id}",
-        name="sticker_asset",
-        description="A selected local sticker image; access is subject to the library policy.",
-        mime_type="application/octet-stream",
-    )
-    async def sticker_asset(
-        sticker_id: str,
-    ) -> bytes:
-
-        library.agent_get(sticker_id)
-
-        return library.asset_bytes(
-            sticker_id,
-            include_deleted=False,
-        )
-
     @apps.tool(
         name="express",
         title="发送表情包",
@@ -410,6 +388,30 @@ def create_server(
                     "error": str(exc)[:200],
                 }
             )
+
+    # 这里一定要在 express / sticker_library 注册完成之后
+    # 再创建 MCPServer。
+    server = MCPServer(
+        "sticker-mcp",
+        extensions=[apps],
+    )
+
+    @server.resource(
+        "sticker://{sticker_id}",
+        name="sticker_asset",
+        description="A selected local sticker image; access is subject to the library policy.",
+        mime_type="application/octet-stream",
+    )
+    async def sticker_asset(
+        sticker_id: str,
+    ) -> bytes:
+
+        library.agent_get(sticker_id)
+
+        return library.asset_bytes(
+            sticker_id,
+            include_deleted=False,
+        )
 
     return server
 
