@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>表情包</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 12px;
+      background: transparent;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "PingFang SC",
+        "Microsoft YaHei",
+        sans-serif;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 18px;
+      background: #ffffff;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+    }
+
+    .image-box {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 120px;
+      background: #f7f7f7;
+    }
+
+    .image-box img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 520px;
+      object-fit: contain;
+    }
+
+    .info {
+      padding: 12px 14px 14px;
+    }
+
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #222;
+      margin-bottom: 6px;
+    }
+
+    .description {
+      font-size: 13px;
+      line-height: 1.5;
+      color: #777;
+      word-break: break-word;
+    }
+
+    .empty {
+      padding: 24px 16px;
+      text-align: center;
+      color: #888;
+      font-size: 14px;
+    }
+
+    .error {
+      padding: 20px;
+      color: #b42318;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="app">
+    <div class="empty">正在加载表情包……</div>
+  </div>
+
+  <script>
+    const app = document.getElementById("app");
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function getToolResult(message) {
+      return message?.params?.structuredContent
+        ?? message?.params?.result
+        ?? message?.result
+        ?? null;
+    }
+
+    function render(data) {
+      if (!data) {
+        app.innerHTML = `
+          <div class="empty">
+            暂时没有收到表情包数据
+          </div>
+        `;
+        return;
+      }
+
+      /*
+       * 兼容我们之前给 MCP 加入的 image_url 字段。
+       */
+      const imageUrl =
+        data.image_url ||
+        data.imageUrl ||
+        data.url ||
+        "";
+
+      const title =
+        data.title ||
+        data.name ||
+        "表情包";
+
+      const description =
+        data.description ||
+        data.caption ||
+        data.tags ||
+        "";
+
+      if (!imageUrl) {
+        app.innerHTML = `
+          <div class="empty">
+            找到了表情包，但没有收到图片地址。
+          </div>
+        `;
+        return;
+      }
+
+      app.innerHTML = `
+        <div class="card">
+          <div class="image-box">
+            <img
+              src="${escapeHtml(imageUrl)}"
+              alt="${escapeHtml(title)}"
+              loading="lazy"
+            />
+          </div>
+
+          <div class="info">
+            <div class="title">
+              ${escapeHtml(title)}
+            </div>
+
+            ${
+              description
+                ? `<div class="description">
+                     ${escapeHtml(description)}
+                   </div>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+
+      const img = app.querySelector("img");
+
+      img.addEventListener("error", () => {
+        app.innerHTML = `
+          <div class="error">
+            图片地址已经收到，但图片加载失败。<br>
+            我们下一步再检查图片地址。
+          </div>
+        `;
+      });
+    }
+
+    /*
+     * MCP Apps 标准：
+     * ChatGPT 会通过 postMessage
+     * 把工具结果发送给这个 HTML。
+     */
+    window.addEventListener(
+      "message",
+      (event) => {
+        if (event.source !== window.parent) {
+          return;
+        }
+
+        const message = event.data;
+
+        if (!message || message.jsonrpc !== "2.0") {
+          return;
+        }
+
+        if (
+          message.method ===
+          "ui/notifications/tool-result"
+        ) {
+          const result = getToolResult(message);
+
+          if (result) {
+            render(result);
+          }
+        }
+      },
+      { passive: true }
+    );
+
+    /*
+     * ChatGPT 兼容方式。
+     * 如果宿主提供 window.openai.toolOutput，
+     * 也尝试从那里读取数据。
+     */
+    function checkOpenAIOutput() {
+      try {
+        if (
+          window.openai &&
+          window.openai.toolOutput
+        ) {
+          render(window.openai.toolOutput);
+        }
+      } catch (error) {
+        console.log(
+          "读取 window.openai.toolOutput 失败",
+          error
+        );
+      }
+    }
+
+    checkOpenAIOutput();
+
+    window.addEventListener(
+      "openai:set_globals",
+      checkOpenAIOutput
+    );
+  </script>
+
+</body>
+</html>
