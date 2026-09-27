@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import argparse
@@ -300,4 +301,309 @@ def start_ui_thread(
     return f"http://{host}:{actual_port}/"
 
 
-def _public_url(args: argparse.Nam
+def _public_url(args: argparse.Namespace) -> str:
+    if args.public_url:
+        value = str(args.public_url).strip().rstrip("/")
+        parsed = urlsplit(value)
+
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise SystemExit(
+                "--public-url must be an absolute http(s) URL"
+            )
+
+        return value + "/"
+
+    return f"http://{args.host}:{args.port}/"
+
+
+def run_stdio(args: argparse.Namespace) -> None:
+    library, queue, config, lock = build_services()
+
+    try:
+        token = os.environ.get("STICKER_MCP_BEARER_TOKEN")
+
+        ui_url = start_ui_thread(
+            library,
+            "127.0.0.1",
+            args.ui_port,
+            token,
+        )
+
+        if config.enabled:
+            LOGGER.info(
+                "vision provider configured; tagging remains explicit and queued"
+            )
+        else:
+            LOGGER.info(
+                "no vision provider configured; manual library use remains available"
+            )
+
+        server = create_server(
+            library,
+            management_url=ui_url or "unavailable://management-ui",
+        )
+
+        server.run(transport="stdio")
+
+    finally:
+        try:
+            queue.shutdown()
+            library.close()
+        finally:
+            lock.release()
+
+
+def run_http(args: argparse.Namespace) -> None:
+    if (
+        not _is_loopback(args.host)
+        and not args.bearer_token
+        and not _allow_no_auth()
+    ):
+        raise SystemExit(
+            "--bearer-token or STICKER_MCP_BEARER_TOKEN "
+            "is required for non-loopback HTTP"
+        )
+
+    trusted_hosts = (
+        set(
+            args.allowed_host
+            or (
+                []
+                if args.host in {"0.0.0.0", "::"}
+                else [args.host]
+            )
+        )
+        | {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }
+    )
+
+    if args.host in {"0.0.0.0", "::"} and not args.allowed_host:
+        raise SystemExit(
+            "--allowed-host is required when binding a wildcard address"
+        )
+
+    public_url = _public_url(args)
+
+    library, queue, _, lock = build_services()
+
+    try:
+        server = create_server(
+            library,
+            management_url=public_url,
+        )
+
+        app = create_http_app(
+            server,
+            library,
+            host=args.host,
+            port=args.port,
+            bearer_token=args.bearer_token,
+            queue=queue,
+            allowed_hosts=trusted_hosts,
+        )
+
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            log_level="info",
+        )
+
+    finally:
+        try:
+            queue.shutdown()
+            library.close()
+        finally:
+            lock.release()
+
+
+def run_web(args: argparse.Namespace) -> None:
+    if (
+        not _is_loopback(args.host)
+        and not args.bearer_token
+        and not _allow_no_auth()
+    ):
+        raise SystemExit(
+            "--bearer-token or STICKER_MCP_BEARER_TOKEN "
+            "is required for non-loopback web"
+        )
+
+    trusted_hosts = (
+        set(
+            args.allowed_host
+            or (
+                []
+                if args.host in {"0.0.0.0", "::"}
+                else [args.host]
+            )
+        )
+        | {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }
+    )
+
+    if args.host in {"0.0.0.0", "::"} and not args.allowed_host:
+        raise SystemExit(
+            "--allowed-host is required when binding a wildcard address"
+        )
+
+    public_url = _public_url(args)
+
+    library, queue, _, lock = build_services()
+
+    try:
+        app = create_app(
+            library,
+            queue=queue,
+            bearer_token=args.bearer_token,
+            allowed_hosts=trusted_hosts,
+        )
+
+        if args.open:
+            threading.Timer(
+                0.5,
+                lambda: webbrowser.open(public_url),
+            ).start()
+
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            log_level="info",
+        )
+
+    finally:
+        try:
+            queue.shutdown()
+            library.close()
+        finally:
+            lock.release()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="sticker-mcp"
+    )
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"sticker-mcp {__version__}",
+    )
+
+    sub = parser.add_subparsers(
+        dest="command",
+        required=True,
+    )
+
+    serve = sub.add_parser(
+        "serve",
+        help="run MCP over stdio",
+    )
+
+    serve.add_argument(
+        "--ui-port",
+        type=int,
+        default=8765,
+    )
+
+    http = sub.add_parser(
+        "serve-http",
+        help="run MCP and manager over Streamable HTTP",
+    )
+
+    http.add_argument(
+        "--host",
+        default="127.0.0.1",
+    )
+
+    http.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+    )
+
+    http.add_argument(
+        "--bearer-token",
+        default=os.environ.get(
+            "STICKER_MCP_BEARER_TOKEN"
+        ),
+    )
+
+    http.add_argument(
+        "--allowed-host",
+        action="append",
+        default=[],
+    )
+
+    http.add_argument(
+        "--public-url"
+    )
+
+    web = sub.add_parser(
+        "web",
+        help="run only the local manager",
+    )
+
+    web.add_argument(
+        "--host",
+        default="127.0.0.1",
+    )
+
+    web.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+    )
+
+    web.add_argument(
+        "--open",
+        action="store_true",
+    )
+
+    web.add_argument(
+        "--bearer-token",
+        default=os.environ.get(
+            "STICKER_MCP_BEARER_TOKEN"
+        ),
+    )
+
+    web.add_argument(
+        "--allowed-host",
+        action="append",
+        default=[],
+    )
+
+    web.add_argument(
+        "--public-url"
+    )
+
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
+
+    if args.command == "serve":
+        run_stdio(args)
+    elif args.command == "serve-http":
+        run_http(args)
+    else:
+        run_web(args)
+
+    return 0
