@@ -242,7 +242,6 @@ def create_server(
 
         return _result(
             payload,
-            image,
         )
 
     @apps.tool(
