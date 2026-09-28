@@ -143,6 +143,12 @@ def create_server(
             ],
         )
 
+    apps.add_html_resource(
+        STICKER_CARD_URI,
+        sticker_card_html,
+        title="表情包",
+        csp=resource_csp,
+    )
 
     @apps.tool(
         name="express",
@@ -234,6 +240,7 @@ def create_server(
 
         return _result(
             payload,
+            image,
         )
 
     @apps.tool(
