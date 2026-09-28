@@ -154,6 +154,7 @@ def create_server(
         name="express",
         title="发送表情包",
         description=EXPRESS_DESCRIPTION,
+        resource_uri=STICKER_CARD_URI,
         meta={},
     )
     async def express(
